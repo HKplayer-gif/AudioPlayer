@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-VERSION="4.50.3"
-BUILD_NUMBER="4503"
+VERSION="4.50.4"
+BUILD_NUMBER="4504"
 APP_NAME="Audio Player"
 BUNDLE_ID="com.audioplayer"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

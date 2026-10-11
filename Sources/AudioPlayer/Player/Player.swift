@@ -804,6 +804,31 @@ final class Player {
         }
     }
 
+    /// Keeps custom DSP buffers in the same sample-rate domain as their player node.
+    /// A nil-format connection inherits the current engine rate (often 44.1 kHz),
+    /// while DSP sessions may emit buffers at the source file rate (for example 48 kHz).
+    /// AVAudioPlayerNode does not reliably resample a mismatched scheduled buffer, so
+    /// the connection must explicitly match the format of buffers produced by the session.
+    private func configureProcessedPlayerNodeFormat(
+        _ node: AVAudioPlayerNode,
+        mixer: AVAudioMixerNode,
+        format: AVAudioFormat
+    ) {
+        let current = node.outputFormat(forBus: 0)
+        guard current.sampleRate != format.sampleRate
+                || current.channelCount != format.channelCount
+                || current.commonFormat != format.commonFormat
+                || current.isInterleaved != format.isInterleaved else {
+            return
+        }
+
+        if engine.isRunning {
+            engine.stop()
+        }
+        engine.disconnectNodeOutput(node)
+        engine.connect(node, to: mixer, format: format)
+    }
+
     private var activePlaybackNode: AVAudioPlayerNode {
         switch activePipeline {
         case .native:
@@ -1674,6 +1699,11 @@ final class Player {
 
         // Mute and stop every route before activating SoundTouch.
         deactivateAllPlaybackPipelines()
+        configureProcessedPlayerNodeFormat(
+            soundTouchPlayerNode,
+            mixer: soundTouchMixer,
+            format: file.processingFormat
+        )
 
         let session = try SoundTouchStreamSession(
             file: file,
@@ -1837,6 +1867,11 @@ final class Player {
 
         // Mute and stop every route before activating Signalsmith.
         deactivateAllPlaybackPipelines()
+        configureProcessedPlayerNodeFormat(
+            signalsmithPlayerNode,
+            mixer: signalsmithMixer,
+            format: file.processingFormat
+        )
 
         let session = try SignalsmithStreamSession(
             file: file,

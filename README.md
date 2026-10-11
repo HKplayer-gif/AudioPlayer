@@ -25,7 +25,7 @@ The repository does not store FFmpeg executable/library binaries. Prepare a self
 FFMPEG_RUNTIME_DIR="/absolute/path/to/ffmpeg-runtime" Scripts/package-release.sh
 ```
 
-The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource, checks that no personal user data is packaged, signs ad hoc, and writes `Audio Player v4.50.3.dmg` to `~/Downloads` by default. Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
+The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource, checks that no personal user data is packaged, signs ad hoc, and writes `Audio Player v4.50.4.dmg` to `~/Downloads` by default (the version is set in `Scripts/package-release.sh`). Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
 
 The current script's ad-hoc signature is not Developer ID signing and does not notarize the app. A public download may therefore show macOS Gatekeeper warnings until a Developer ID certificate and notarization workflow are configured.
 
