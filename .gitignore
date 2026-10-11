@@ -1,0 +1,41 @@
+# SwiftPM / Xcode build products
+.build/
+.build-*
+DerivedData/
+.swiftpm/
+Packages/
+xcuserdata/
+
+# macOS/editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+*~
+
+# Release artifacts and local staging
+*.dmg
+*.zip
+.AudioPlayer-*-staging/
+release/
+
+# Local FFmpeg runtime bundles (large binaries; prepare separately)
+ThirdPartyRuntime/
+ffmpeg-runtime/
+
+# Local machine settings and secrets
+.env
+.env.*
+.netrc
+*.p12
+*.mobileprovision
+
+# Local user data (never publish personal playback/library state)
+User Data/
+User Settings.json
+Playback History.json
+Queue Resume Snapshot.json
+
+# Internal release/test staging directories
+.AudioPlayer-Internal-Test-Staging/
