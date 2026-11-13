@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-VERSION="4.50.4"
-BUILD_NUMBER="4504"
+VERSION="26.11.1"
+BUILD_NUMBER="26.11.1"
 APP_NAME="Audio Player"
 BUNDLE_ID="com.audioplayer"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,18 +18,21 @@ if [[ -z "$FFMPEG_RUNTIME_DIR" || ! -x "$FFMPEG_RUNTIME_DIR/ffmpeg" ]]; then
     echo "It must contain an executable 'ffmpeg' and every required non-system .dylib." >&2
     exit 2
 fi
-if [[ ! -f "$ROOT/Sources/AudioPlayer/Resources/AudioPlayer.icns" ]]; then
-    echo "ERROR: App icon missing from Sources/AudioPlayer/Resources/AudioPlayer.icns" >&2
+if [[ ! -f "$ROOT/AudioPlayer.icns" ]]; then
+    echo "ERROR: App icon missing from $ROOT/AudioPlayer.icns" >&2
     exit 2
 fi
 
 cd "$ROOT"
+"$ROOT/Scripts/build-essentia.sh"
 swift build -c release
 BINARY="$ROOT/.build/release/AudioPlayer"
 RESOURCE_BUNDLE="$ROOT/.build/release/AudioPlayer_AudioPlayer.bundle"
 [[ -x "$BINARY" ]] || { echo "ERROR: Release executable not found: $BINARY" >&2; exit 3; }
 [[ -d "$RESOURCE_BUNDLE" ]] || { echo "ERROR: SwiftPM resource bundle not found: $RESOURCE_BUNDLE" >&2; exit 3; }
 
+# Start from a clean, version-specific staging directory so stale files from an
+# earlier packaging attempt cannot leak into this release.
 rm -rf "$STAGING_DIR"
 mkdir -p "$CONTENTS/MacOS" "$RESOURCES/ThirdPartyLicenses"
 cp "$BINARY" "$CONTENTS/MacOS/AudioPlayer"
@@ -40,7 +43,7 @@ cp -R "$RESOURCE_BUNDLE" "$RESOURCES/"
     echo "ERROR: Default Settings.json is missing from the packaged resource bundle." >&2
     exit 3
 }
-cp "$ROOT/Sources/AudioPlayer/Resources/AudioPlayer.icns" "$RESOURCES/AudioPlayer.icns"
+cp "$ROOT/AudioPlayer.icns" "$RESOURCES/AudioPlayer.icns"
 
 # Bundle FFmpeg and its runtime dylibs. The release app must not resolve Homebrew paths.
 cp "$FFMPEG_RUNTIME_DIR/ffmpeg" "$RESOURCES/ffmpeg"
@@ -48,8 +51,20 @@ chmod 755 "$RESOURCES/ffmpeg"
 find "$FFMPEG_RUNTIME_DIR" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$RESOURCES/" \;
 
 # Include the project's third-party notices and license texts in the app bundle.
-find "$ROOT/Sources/AudioPlayer/Resources/ThirdPartyLicenses" -maxdepth 1 -type f -exec cp -f {} "$RESOURCES/ThirdPartyLicenses/" \;
+for license_file in \
+    AudioPlayer-AGPL-3.0.txt \
+    Essentia-AGPL-3.0.txt \
+    FFmpeg-LICENSE.md \
+    FFmpeg-COPYING-LGPLv2.1.txt \
+    LAME-LICENSE.txt \
+    mpg123-COPYING.txt \
+    SoundTouch-LGPL-2.1.txt \
+    SignalsmithLinear-MIT.txt \
+    SignalsmithStretch-MIT.txt; do
+    cp "$ROOT/Sources/AudioPlayer/Resources/ThirdPartyLicenses/$license_file" "$RESOURCES/ThirdPartyLicenses/"
+done
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$RESOURCES/ThirdPartyLicenses/THIRD_PARTY_NOTICES.md"
+cp "$ROOT/NOTICE" "$RESOURCES/NOTICE"
 if [[ -d "$FFMPEG_RUNTIME_DIR/ThirdPartyLicenses" ]]; then
     find "$FFMPEG_RUNTIME_DIR/ThirdPartyLicenses" -maxdepth 1 -type f -exec cp -f {} "$RESOURCES/ThirdPartyLicenses/" \;
 fi
@@ -58,8 +73,11 @@ FFmpeg runtime bundled with Audio Player v${VERSION}.
 Upstream: https://ffmpeg.org/
 Build version: $("$RESOURCES/ffmpeg" -version 2>&1 | head -1)
 Build configuration: $("$RESOURCES/ffmpeg" -buildconf 2>&1 | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's#/opt/homebrew/Cellar/ffmpeg/9.0.2#<build-prefix>#g')
-This build enables GPL components. See FFmpeg-LICENSE.md and FFmpeg-COPYING-GPLv3.txt.
-Corresponding source and external-library source availability must be maintained with this release.
+This build is configured without GPL, nonfree, or OpenSSL components.
+FFmpeg is LGPL-2.1-or-later; libmp3lame and mpg123 retain their own licenses.
+See FFmpeg-LICENSE.md, FFmpeg-COPYING-LGPLv2.1.txt, LAME-LICENSE.txt, and mpg123-COPYING.txt.
+The bundled runtime is self-contained and has no Homebrew or build-machine runtime dependency.
+Corresponding source and build records are supplied with this release.
 EOF
 
 cat > "$CONTENTS/Info.plist" <<EOF
@@ -103,16 +121,44 @@ codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
 DMG_PATH="$OUTPUT_DIR/${APP_NAME} v${VERSION}.dmg"
-rm -f "$DMG_PATH"
-hdiutil create -volname "${APP_NAME} ${VERSION}" -srcfolder "$STAGING_DIR" -ov -format UDZO "$DMG_PATH"
+# Replace only the artifact for this exact release version.
+rm -f "$DMG_PATH" "$DMG_PATH.sha256"
+hdiutil create -volname "${APP_NAME} ${VERSION}" -srcfolder "$STAGING_DIR" -format UDZO "$DMG_PATH"
 hdiutil verify "$DMG_PATH"
+
+# Mount the completed image read-only and verify its actual delivered contents.
+MOUNT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/audioplayer-dmg-check.XXXXXX")"
+cleanup_mount() {
+    hdiutil detach "$MOUNT_DIR" -quiet >/dev/null 2>&1 || true
+    rmdir "$MOUNT_DIR" >/dev/null 2>&1 || true
+}
+trap cleanup_mount EXIT
+hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_DIR" "$DMG_PATH" >/dev/null
+MOUNTED_APP="$MOUNT_DIR/${APP_NAME}.app"
+[[ -d "$MOUNTED_APP" ]] || { echo "ERROR: App bundle missing from mounted DMG." >&2; exit 5; }
+[[ -L "$MOUNT_DIR/Applications" ]] || { echo "ERROR: Applications shortcut missing from mounted DMG." >&2; exit 5; }
+[[ -f "$MOUNTED_APP/Contents/Resources/AudioPlayer.icns" ]] || { echo "ERROR: App icon missing from mounted DMG." >&2; exit 5; }
+[[ -x "$MOUNTED_APP/Contents/Resources/ffmpeg" ]] || { echo "ERROR: Bundled FFmpeg missing from mounted DMG." >&2; exit 5; }
+[[ "$(find "$MOUNTED_APP/Contents/Resources" -maxdepth 1 -type f -name '*.dylib' | wc -l | tr -d ' ')" -ge 1 ]] || { echo "ERROR: Bundled FFmpeg libraries missing from mounted DMG." >&2; exit 5; }
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$MOUNTED_APP/Contents/Info.plist")" == "$VERSION" ]] || { echo "ERROR: Mounted DMG version mismatch." >&2; exit 5; }
+hdiutil detach "$MOUNT_DIR" -quiet
+rmdir "$MOUNT_DIR"
+trap - EXIT
 
 # Verify version metadata and the expected self-contained export backend.
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$CONTENTS/Info.plist")" == "$VERSION" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$CONTENTS/Info.plist")" == "$BUILD_NUMBER" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$CONTENTS/Info.plist")" == "$BUNDLE_ID" ]]
 [[ -x "$RESOURCES/ffmpeg" ]]
+[[ -f "$RESOURCES/libmp3lame.0.dylib" ]]
+[[ -f "$RESOURCES/libmpg123.0.dylib" ]]
 [[ -f "$RESOURCES/AudioPlayer_AudioPlayer.bundle/Default Settings.json" ]]
+"$RESOURCES/ffmpeg" -version >/dev/null
+"$RESOURCES/ffmpeg" -L 2>&1 | grep -q "Lesser General Public License" || { echo "ERROR: FFmpeg license configuration is not the expected LGPL build." >&2; exit 4; }
+if "$RESOURCES/ffmpeg" -buildconf 2>&1 | grep -Eq -- '--enable-(gpl|nonfree|openssl)'; then
+    echo "ERROR: FFmpeg build enables a restricted GPL/nonfree/OpenSSL configuration." >&2
+    exit 4
+fi
 if find "$APP_DIR" \( -name "User Data" -o -name "User Settings.json" -o -name "Playback History.json" \) -print -quit | grep -q .; then
     echo "ERROR: Personal user data was found inside the release app bundle." >&2
     exit 4

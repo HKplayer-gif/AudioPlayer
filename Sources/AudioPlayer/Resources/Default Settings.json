@@ -21,5 +21,19 @@
   "mouseSideButtonsReversed": false,
   "shiftF7F9SideButtonsEnabled": false,
   "allowDuplicatePlaylistItems": false,
-  "playlistEscapeNavigationEnabled": false
+  "playlistEscapeNavigationEnabled": false,
+  "bpmKeyEnabled": false,
+  "screenEffectEnabled": false,
+  "showEffectToggleStateInCurrentPlayingTab": false,
+  "screenEffectStrength": 1.1,
+  "screenEffectHoldDuration": 0.1,
+  "screenEffectFadeInDuration": 0.1,
+  "screenEffectFadeOutDuration": 0.5,
+  "screenEffectTriggerKeyCode": 28,
+  "screenEffectTriggerKeyLabel": "8",
+  "screenEffectTriggerShift": false,
+  "screenEffectBeatRateMultiplier": 1.0,
+  "screenEffectRedMultiplier": 1.0,
+  "screenEffectGreenMultiplier": 1.0,
+  "screenEffectBlueMultiplier": 1.0
 }

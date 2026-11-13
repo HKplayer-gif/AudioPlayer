@@ -67,6 +67,25 @@ struct SettingsState: Codable, Equatable {
 
     var playlistEscapeNavigationEnabled: Bool
 
+    var bpmKeyEnabled: Bool
+    var screenEffectEnabled: Bool
+    var showEffectToggleStateInCurrentPlayingTab: Bool
+    var screenEffectStrength: Double
+    var screenEffectHoldDuration: Double
+    var screenEffectFadeInDuration: Double
+    var screenEffectFadeOutDuration: Double
+    var screenEffectBeatRateMultiplier: Double
+    var screenEffectRedMultiplier: Double
+    var screenEffectGreenMultiplier: Double
+    var screenEffectBlueMultiplier: Double
+    var screenEffectTriggerKeyCode: UInt32
+    var screenEffectTriggerKeyLabel: String
+    var screenEffectTriggerShift: Bool
+
+    static let screenEffectBeatRateOptions: [Double] = [
+        0.125, 0.25, 0.5, 1.0, 2.0, 4.0
+    ]
+
     static let `default` = SettingsState(
         playbackProcessingMode: .processed,
         audioProcessingAlgorithm: .systemTimePitch,
@@ -91,6 +110,20 @@ struct SettingsState: Codable, Equatable {
         volumeAdjustmentStep: 0.05,
         allowDuplicatePlaylistItems: false,
         playlistEscapeNavigationEnabled: false,
+        bpmKeyEnabled: false,
+        screenEffectEnabled: false,
+        showEffectToggleStateInCurrentPlayingTab: false,
+        screenEffectStrength: 1.1,
+        screenEffectHoldDuration: 0.1,
+        screenEffectFadeInDuration: 0.1,
+        screenEffectFadeOutDuration: 0.5,
+        screenEffectBeatRateMultiplier: 1.0,
+        screenEffectRedMultiplier: 1.0,
+        screenEffectGreenMultiplier: 1.0,
+        screenEffectBlueMultiplier: 1.0,
+        screenEffectTriggerKeyCode: 28,
+        screenEffectTriggerKeyLabel: "8",
+        screenEffectTriggerShift: false,
     )
 
     private enum CodingKeys: String, CodingKey {
@@ -117,10 +150,27 @@ struct SettingsState: Codable, Equatable {
         case volumeAdjustmentStep
         case allowDuplicatePlaylistItems
         case playlistEscapeNavigationEnabled
+        case bpmKeyEnabled
+        case screenEffectEnabled
+        case showEffectToggleStateInCurrentPlayingTab
+        case screenEffectStrength
+        case screenEffectHoldDuration
+        case screenEffectFadeInDuration
+        case screenEffectFadeOutDuration
+        case screenEffectBeatRateMultiplier
+        case screenEffectRedMultiplier
+        case screenEffectGreenMultiplier
+        case screenEffectBlueMultiplier
+        case screenEffectTriggerKeyCode
+        case screenEffectTriggerKeyLabel
+        case screenEffectTriggerShift
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
         case commandF7F9SideButtonsEnabled
+        case screenEffectRedChannelEnabled
+        case screenEffectGreenChannelEnabled
+        case screenEffectBlueChannelEnabled
     }
 
     init(
@@ -147,6 +197,20 @@ struct SettingsState: Codable, Equatable {
         volumeAdjustmentStep: Double,
         allowDuplicatePlaylistItems: Bool,
         playlistEscapeNavigationEnabled: Bool,
+        bpmKeyEnabled: Bool = false,
+        screenEffectEnabled: Bool = false,
+        showEffectToggleStateInCurrentPlayingTab: Bool = false,
+        screenEffectStrength: Double = 1.1,
+        screenEffectHoldDuration: Double = 0.1,
+        screenEffectFadeInDuration: Double = 0.1,
+        screenEffectFadeOutDuration: Double = 0.5,
+        screenEffectBeatRateMultiplier: Double = 1.0,
+        screenEffectRedMultiplier: Double = 1.0,
+        screenEffectGreenMultiplier: Double = 1.0,
+        screenEffectBlueMultiplier: Double = 1.0,
+        screenEffectTriggerKeyCode: UInt32 = 28,
+        screenEffectTriggerKeyLabel: String = "8",
+        screenEffectTriggerShift: Bool = false,
     ) {
         self.playbackProcessingMode = playbackProcessingMode
         self.audioProcessingAlgorithm = audioProcessingAlgorithm
@@ -171,6 +235,22 @@ struct SettingsState: Codable, Equatable {
         self.volumeAdjustmentStep = volumeAdjustmentStep
         self.allowDuplicatePlaylistItems = allowDuplicatePlaylistItems
         self.playlistEscapeNavigationEnabled = playlistEscapeNavigationEnabled
+        self.bpmKeyEnabled = bpmKeyEnabled
+        self.screenEffectEnabled = screenEffectEnabled && bpmKeyEnabled
+        self.showEffectToggleStateInCurrentPlayingTab = showEffectToggleStateInCurrentPlayingTab
+        self.screenEffectStrength = min(max(screenEffectStrength, 0.75), 2.0)
+        self.screenEffectHoldDuration = min(max((screenEffectHoldDuration * 10).rounded() / 10, 0.0), 10.0)
+        self.screenEffectFadeInDuration = min(max((screenEffectFadeInDuration * 10).rounded() / 10, 0.0), 1.0)
+        self.screenEffectFadeOutDuration = min(max((screenEffectFadeOutDuration * 10).rounded() / 10, 0.0), 10.0)
+        self.screenEffectBeatRateMultiplier = Self.screenEffectBeatRateOptions.min {
+            abs($0 - screenEffectBeatRateMultiplier) < abs($1 - screenEffectBeatRateMultiplier)
+        } ?? 1.0
+        self.screenEffectRedMultiplier = min(max((screenEffectRedMultiplier * 100).rounded() / 100, 0.0), 1.0)
+        self.screenEffectGreenMultiplier = min(max((screenEffectGreenMultiplier * 100).rounded() / 100, 0.0), 1.0)
+        self.screenEffectBlueMultiplier = min(max((screenEffectBlueMultiplier * 100).rounded() / 100, 0.0), 1.0)
+        self.screenEffectTriggerKeyCode = screenEffectTriggerKeyCode
+        self.screenEffectTriggerKeyLabel = screenEffectTriggerKeyLabel
+        self.screenEffectTriggerShift = screenEffectTriggerShift
     }
 
     init(from decoder: Decoder) throws {
@@ -302,6 +382,72 @@ struct SettingsState: Codable, Equatable {
         playlistEscapeNavigationEnabled = try container.decodeIfPresent(
             Bool.self,
             forKey: .playlistEscapeNavigationEnabled
+        ) ?? false
+
+        bpmKeyEnabled = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .bpmKeyEnabled
+        ) ?? false
+
+        screenEffectEnabled = (try container.decodeIfPresent(
+            Bool.self,
+            forKey: .screenEffectEnabled
+        ) ?? false) && bpmKeyEnabled
+
+        showEffectToggleStateInCurrentPlayingTab = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .showEffectToggleStateInCurrentPlayingTab
+        ) ?? false
+
+        screenEffectStrength = min(max(try container.decodeIfPresent(
+            Double.self,
+            forKey: .screenEffectStrength
+        ) ?? 1.1, 0.75), 2.0)
+
+        screenEffectHoldDuration = min(max(((try container.decodeIfPresent(
+            Double.self,
+            forKey: .screenEffectHoldDuration
+        ) ?? 0.1) * 10).rounded() / 10, 0.0), 10.0)
+
+        screenEffectFadeInDuration = min(max(((try container.decodeIfPresent(
+            Double.self,
+            forKey: .screenEffectFadeInDuration
+        ) ?? 0.1) * 10).rounded() / 10, 0.0), 1.0)
+
+        screenEffectFadeOutDuration = min(max(((try container.decodeIfPresent(
+            Double.self,
+            forKey: .screenEffectFadeOutDuration
+        ) ?? 0.5) * 10).rounded() / 10, 0.0), 10.0)
+
+        let storedBeatRateMultiplier = try container.decodeIfPresent(
+            Double.self,
+            forKey: .screenEffectBeatRateMultiplier
+        ) ?? 1.0
+        screenEffectBeatRateMultiplier = Self.screenEffectBeatRateOptions.min {
+            abs($0 - storedBeatRateMultiplier) < abs($1 - storedBeatRateMultiplier)
+        } ?? 1.0
+
+        let legacyChannelSettings = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let legacyRedEnabled = try legacyChannelSettings.decodeIfPresent(Bool.self, forKey: .screenEffectRedChannelEnabled) ?? true
+        let legacyGreenEnabled = try legacyChannelSettings.decodeIfPresent(Bool.self, forKey: .screenEffectGreenChannelEnabled) ?? true
+        let legacyBlueEnabled = try legacyChannelSettings.decodeIfPresent(Bool.self, forKey: .screenEffectBlueChannelEnabled) ?? true
+        screenEffectRedMultiplier = min(max(((try container.decodeIfPresent(Double.self, forKey: .screenEffectRedMultiplier) ?? (legacyRedEnabled ? 1.0 : 0.0)) * 100).rounded() / 100, 0.0), 1.0)
+        screenEffectGreenMultiplier = min(max(((try container.decodeIfPresent(Double.self, forKey: .screenEffectGreenMultiplier) ?? (legacyGreenEnabled ? 1.0 : 0.0)) * 100).rounded() / 100, 0.0), 1.0)
+        screenEffectBlueMultiplier = min(max(((try container.decodeIfPresent(Double.self, forKey: .screenEffectBlueMultiplier) ?? (legacyBlueEnabled ? 1.0 : 0.0)) * 100).rounded() / 100, 0.0), 1.0)
+
+        screenEffectTriggerKeyCode = try container.decodeIfPresent(
+            UInt32.self,
+            forKey: .screenEffectTriggerKeyCode
+        ) ?? 28
+
+        screenEffectTriggerKeyLabel = try container.decodeIfPresent(
+            String.self,
+            forKey: .screenEffectTriggerKeyLabel
+        ) ?? "8"
+
+        screenEffectTriggerShift = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .screenEffectTriggerShift
         ) ?? false
     }
 }

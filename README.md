@@ -7,12 +7,14 @@ A lightweight, offline-first macOS audio player with pitch and playback-speed pr
 - macOS 14 or later
 - Apple Silicon build/release target for the currently prepared release artifact
 - Xcode Command Line Tools with Swift 6.2 toolchain for building from source
+- Python 3 for the build-time Essentia/Waf setup only (not required by the distributed app)
 
 The distributed app bundles its FFmpeg executable and required non-system dynamic libraries. End users do not need Homebrew, FFmpeg, or another package manager installed. macOS system frameworks remain platform requirements.
 
 ## Build from source
 
 ```sh
+Scripts/build-essentia.sh
 swift build
 swift build -c release
 ```
@@ -25,7 +27,9 @@ The repository does not store FFmpeg executable/library binaries. Prepare a self
 FFMPEG_RUNTIME_DIR="/absolute/path/to/ffmpeg-runtime" Scripts/package-release.sh
 ```
 
-The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource, checks that no personal user data is packaged, signs ad hoc, and writes `Audio Player v4.50.4.dmg` to `~/Downloads` by default (the version is set in `Scripts/package-release.sh`). Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
+The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource and self-contained LGPL FFmpeg runtime, checks that no personal user data is packaged, signs ad hoc, creates the Applications shortcut, mounts the finished DMG read-only for a content check, and writes `Audio Player v26.11.1.dmg` to `~/Downloads` by default (the version is set in `Scripts/package-release.sh`). Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
+
+The GitHub release includes a complete project source archive (including the pinned Essentia submodule) and a separate FFmpeg/LAME/mpg123 corresponding-source and build-provenance archive.
 
 The current script's ad-hoc signature is not Developer ID signing and does not notarize the app. A public download may therefore show macOS Gatekeeper warnings until a Developer ID certificate and notarization workflow are configured.
 
@@ -39,8 +43,10 @@ See `THIRD_PARTY_NOTICES.md` and the license texts under `Sources/AudioPlayer/Re
 
 ## License and attribution
 
-The Audio Player project is licensed under the MIT License; see [`LICENSE`](LICENSE). You may use, modify, and redistribute the project under its terms. When redistributing copies or substantial portions, retain the copyright notice and the MIT license text.
+The current public release, **Audio Player v26.11.1**, is licensed as a whole under the GNU Affero General Public License, version 3 (AGPL-3.0-only); see LICENSE. The licensing transition was prepared during the v4.51.4 development test on 2026-11-12 to support the integration of Essentia.
 
-Please also credit the original project and link back to this repository when publishing a redistribution or derivative. This is a project attribution request; the standard MIT license itself requires preservation of its copyright and license notice, but does not independently require a visible repository URL.
+**Earlier published releases, including v4.50.4, remain available under the MIT license** as originally published. A copy of that prior license is retained in LICENSE-MIT-PRIOR-RELEASES.txt. This change does not retroactively withdraw permissions already granted for those earlier releases.
 
-Third-party components are **not** relicensed under the project MIT license. Their original license terms and source-code obligations continue to apply; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the bundled license texts.
+When distributing an AGPL-3.0 build, provide the corresponding source code and the materials needed to build, install, run, and modify the distributed version. The GitHub release must identify the exact source tag/commit and include or clearly link to all separately maintained dependency source required by that build. See THIRD_PARTY_NOTICES.md.
+
+Please also credit the original project and link back to this repository when publishing a redistribution or derivative. Third-party components retain their own license terms; see THIRD_PARTY_NOTICES.md and the bundled license texts.

@@ -35,6 +35,7 @@ struct NowPlayingView: View {
     @State private var coverImage: NSImage?
     @State private var currentTrack: Track?
     @State private var exportErrorMessage: String?
+    @State private var exportSuccessMessage: String?
     @State private var isExporting = false
 
     @MainActor
@@ -63,6 +64,19 @@ struct NowPlayingView: View {
 
     private var pitchCyclesAreActive: Bool {
         appController.isPitchCyclesPlaybackActive
+    }
+
+    private var displayedBPMText: String {
+        guard let result = appController.bpmKeyAnalysisResult else {
+            return appController.bpmKeyAnalysisStatus.displayMessage
+        }
+
+        let speed = player.speed
+        let effectiveBPM = result.bpm * speed
+        if abs(speed - 1.0) < 0.0001 {
+            return String(format: "%.1f", result.bpm)
+        }
+        return String(format: "%.1f (%.1f)", effectiveBPM, result.bpm)
     }
 
     var body: some View {
@@ -114,23 +128,25 @@ struct NowPlayingView: View {
             updatePlaybackProgress()
         }
         .alert(
-            "Export Failed",
+            exportErrorMessage == nil ? "Export Complete" : "Export Failed",
             isPresented: Binding(
                 get: {
-                    exportErrorMessage != nil
+                    exportErrorMessage != nil || exportSuccessMessage != nil
                 },
                 set: { visible in
                     if !visible {
                         exportErrorMessage = nil
+                        exportSuccessMessage = nil
                     }
                 }
             )
         ) {
             Button("OK") {
                 exportErrorMessage = nil
+                exportSuccessMessage = nil
             }
         } message: {
-            Text(exportErrorMessage ?? "")
+            Text(exportErrorMessage ?? exportSuccessMessage ?? "")
         }
         .task(id: player.currentTrackURL) {
             await loadCurrentTrackMetadata()
@@ -604,6 +620,66 @@ struct NowPlayingView: View {
                         .font(.body)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+
+                if appController.settings.bpmKeyEnabled {
+                    HStack(spacing: 4) {
+                        Text("Key:")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+
+                        Text(
+                            appController.bpmKeyAnalysisResult.map {
+                                "\($0.key) \($0.scale.capitalized)"
+                            } ?? appController.bpmKeyAnalysisStatus.displayMessage
+                        )
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+
+                    HStack(spacing: 4) {
+                        Text("BPM:")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+
+                        Text(displayedBPMText)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                }
+
+                if appController.settings.showEffectToggleStateInCurrentPlayingTab {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("Screen Effect")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            Text(appController.screenEffectController.status.title)
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(
+                                    appController.screenEffectController.status == .enabled
+                                        ? .green
+                                        : .secondary
+                                )
+                        }
+
+                        if !appController.settings.bpmKeyEnabled {
+                            Text("Enable BPM & Key to use Screen Effect.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        Color.primary.opacity(0.045),
+                        in: RoundedRectangle(cornerRadius: 8)
+                    )
                 }
             }
         }
@@ -1125,6 +1201,7 @@ struct NowPlayingView: View {
 
                 await MainActor.run {
                     isExporting = false
+                    exportSuccessMessage = "\(destinationURL.lastPathComponent) was exported successfully."
                 }
             } catch {
                 await MainActor.run {

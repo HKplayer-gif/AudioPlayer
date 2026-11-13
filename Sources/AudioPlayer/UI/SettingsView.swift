@@ -67,6 +67,23 @@ struct SettingsView: View {
                 maxWidth: .infinity,
                 maxHeight: .infinity
             )
+            .alert(
+                "Could Not Save Settings",
+                isPresented: Binding(
+                    get: { appController.settingsSaveErrorMessage != nil },
+                    set: { isPresented in
+                        if !isPresented {
+                            appController.dismissSettingsSaveError()
+                        }
+                    }
+                )
+            ) {
+                Button("OK") {
+                    appController.dismissSettingsSaveError()
+                }
+            } message: {
+                Text(appController.settingsSaveErrorMessage ?? "An unknown error occurred while saving settings.")
+            }
         }
         .navigationTitle("Settings")
         .onChange(of: selectedSection) { _, newSection in

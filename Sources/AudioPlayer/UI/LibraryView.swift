@@ -253,6 +253,8 @@ struct LibraryView: View {
 
                 Spacer()
 
+                quickSearchIndicator
+
                 SortControl(
                     sortOrder: appController.history.sortOrder,
                     options: [
@@ -379,6 +381,8 @@ struct LibraryView: View {
                 )
 
                 Spacer()
+
+                quickSearchIndicator
 
                 Button {
                     chooseFolder()
@@ -538,6 +542,8 @@ struct LibraryView: View {
 
                 Spacer()
 
+                quickSearchIndicator
+
                 if appController.browser.track != nil {
                     Button("Clear", role: .destructive) {
                         appController.browser.clear()
@@ -612,6 +618,16 @@ struct LibraryView: View {
             maxHeight: .infinity,
             alignment: .topLeading
         )
+    }
+
+    @ViewBuilder
+    private var quickSearchIndicator: some View {
+        if !quickSearchController.buffer.isEmpty {
+            Text("Search Active")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
     }
 
     private func performQuickSearch(_ query: String) {
@@ -819,7 +835,8 @@ struct LibraryView: View {
     }
 
     private func refreshHistory() {
-
+        quickSearchController.clear()
+        quickSearchTargetID = nil
         isRefreshingHistory = true
         historyTransitionID = UUID()
 
@@ -839,6 +856,9 @@ struct LibraryView: View {
     }
 
     private func refreshLibrary() {
+        quickSearchController.clear()
+        quickSearchTargetID = nil
+
         guard
             appController.selectedFolder.refresh(),
             let folderURL =

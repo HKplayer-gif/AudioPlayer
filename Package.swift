@@ -17,6 +17,16 @@ if needsSDKCxxHeaderFallback {
     signalsmithCxxSettings.append(.unsafeFlags(["-isystem", sdkCxxHeaders]))
 }
 
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+
+var essentiaCxxSettings: [CXXSetting] = [
+    .headerSearchPath("../../Vendor/Essentia/src"),
+    .headerSearchPath("../../Vendor/Essentia/build/src")
+]
+if needsSDKCxxHeaderFallback {
+    essentiaCxxSettings.append(.unsafeFlags(["-isystem", sdkCxxHeaders]))
+}
+
 let package = Package(
     name: "AudioPlayer",
     platforms: [
@@ -31,7 +41,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AudioPlayer",
-            dependencies: ["SoundTouchPlayback", "SignalsmithPlayback"],
+            dependencies: ["SoundTouchPlayback", "SignalsmithPlayback", "EssentiaBridge"],
             resources: [
                 .process("Resources")
             ]
@@ -78,6 +88,22 @@ let package = Package(
             path: "Sources/SignalsmithBridge",
             publicHeadersPath: "include",
             cxxSettings: signalsmithCxxSettings
+        ),
+        .target(
+            name: "EssentiaBridge",
+            path: "Sources/EssentiaBridge",
+            publicHeadersPath: "include",
+            cxxSettings: essentiaCxxSettings,
+            linkerSettings: [
+                .unsafeFlags(["-L\(packageRoot)/Vendor/Essentia/build/src"]),
+                .linkedLibrary("essentia"),
+                .linkedFramework("Accelerate")
+            ]
+        ),
+        .testTarget(
+            name: "AudioPlayerTests",
+            dependencies: ["AudioPlayer"]
         )
-    ]
+    ],
+    cxxLanguageStandard: .cxx11
 )

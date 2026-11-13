@@ -1,5 +1,7 @@
 import Foundation
 import AVFAudio
+import SoundTouchPlayback
+import SignalsmithPlayback
 
 struct AudioExporter {
 
@@ -12,14 +14,14 @@ struct AudioExporter {
         speed: Double,
         volume: Double
     ) throws {
-        guard algorithm == .systemTimePitch else {
-            throw AudioExportError.unsupportedAlgorithm
-        }
+        let clampedPitch = min(max(pitch, -12.0), 12.0)
+        let clampedSpeed = min(max(speed, 0.1), 3.0)
+        let clampedVolume = min(max(volume, 0.0), 1.0)
 
         let isUnchangedExport =
-            pitch == 0
-            && speed == 1
-            && volume == 1
+            clampedPitch == 0
+            && clampedSpeed == 1
+            && clampedVolume == 1
             && sourceURL.pathExtension.lowercased() ==
                 format.fileExtension.lowercased()
 
@@ -37,135 +39,143 @@ struct AudioExporter {
         let sourceFormat = sourceFile.processingFormat
 
         guard sourceFormat.sampleRate > 0,
-              sourceFormat.channelCount > 0 else {
+              sourceFormat.channelCount > 0,
+              sourceFormat.commonFormat == .pcmFormatFloat32 else {
             throw AudioExportError.invalidAudioFormat
         }
 
-        let renderFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: sourceFormat.sampleRate,
-            channels: sourceFormat.channelCount,
-            interleaved: false
+        let renderFormat = sourceFormat
+        let requiresExternalCodec =
+            format == .mp3 || format == .flac || format == .ogg || format == .aac
+
+        let renderedWAVURL: URL?
+        let outputURLForRender: URL
+        let renderFormatChoice: AudioExportFormat
+
+        if requiresExternalCodec {
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("AudioPlayerExport-\(UUID().uuidString)")
+                .appendingPathExtension("wav")
+            renderedWAVURL = temporaryURL
+            outputURLForRender = temporaryURL
+            renderFormatChoice = .wav
+        } else {
+            renderedWAVURL = nil
+            outputURLForRender = destinationURL
+            renderFormatChoice = format
+        }
+
+        defer {
+            if let renderedWAVURL {
+                try? FileManager.default.removeItem(at: renderedWAVURL)
+            }
+        }
+
+        let outputFile = try AVAudioFile(
+            forWriting: outputURLForRender,
+            settings: outputSettings(
+                for: renderFormatChoice,
+                sourceFormat: renderFormat
+            )
         )
 
-        guard let renderFormat else {
-            throw AudioExportError.invalidAudioFormat
+        switch algorithm {
+        case .systemTimePitch:
+            try renderWithSystemTimePitch(
+                sourceFile: sourceFile,
+                outputFile: outputFile,
+                renderFormat: renderFormat,
+                pitch: clampedPitch,
+                speed: clampedSpeed,
+                volume: clampedVolume
+            )
+
+        case .soundTouch:
+            let session = try SoundTouchStreamSession(
+                file: sourceFile,
+                startPosition: 0,
+                speed: clampedSpeed,
+                pitchSemitones: clampedPitch
+            )
+            try renderSession(
+                nextBuffer: { try session.nextBufferForExport() },
+                outputFile: outputFile,
+                volume: clampedVolume
+            )
+
+        case .signalsmith:
+            let session = try SignalsmithStreamSession(
+                file: sourceFile,
+                startPosition: 0,
+                speed: clampedSpeed,
+                pitchSemitones: clampedPitch
+            )
+            try renderSession(
+                nextBuffer: { try session.nextBufferForExport() },
+                outputFile: outputFile,
+                volume: clampedVolume
+            )
         }
 
+        if let renderedWAVURL {
+            try encodeWithFFmpeg(
+                inputURL: renderedWAVURL,
+                destinationURL: destinationURL,
+                format: format
+            )
+        }
+    }
+
+    private static func renderWithSystemTimePitch(
+        sourceFile: AVAudioFile,
+        outputFile: AVAudioFile,
+        renderFormat: AVAudioFormat,
+        pitch: Double,
+        speed: Double,
+        volume: Double
+    ) throws {
         let engine = AVAudioEngine()
         let playerNode = AVAudioPlayerNode()
         let timePitch = AVAudioUnitTimePitch()
 
         engine.attach(playerNode)
         engine.attach(timePitch)
-
-        engine.connect(
-            playerNode,
-            to: timePitch,
-            format: sourceFormat
-        )
-        engine.connect(
-            timePitch,
-            to: engine.mainMixerNode,
-            format: renderFormat
-        )
-        engine.mainMixerNode.outputVolume = Float(
-            min(max(volume, 0.0), 1.0)
-        )
-
-        timePitch.pitch = Float(
-            min(max(pitch, -12.0), 12.0) * 100.0
-        )
-        timePitch.rate = Float(
-            min(max(speed, 0.1), 3.0)
-        )
-
-        let maximumFrameCount: AVAudioFrameCount = 4096
+        engine.connect(playerNode, to: timePitch, format: sourceFile.processingFormat)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: renderFormat)
+        engine.mainMixerNode.outputVolume = Float(volume)
+        timePitch.pitch = Float(pitch * 100.0)
+        timePitch.rate = Float(speed)
 
         try engine.enableManualRenderingMode(
             .offline,
             format: renderFormat,
-            maximumFrameCount: maximumFrameCount
+            maximumFrameCount: 4096
         )
-
-        playerNode.scheduleFile(
-            sourceFile,
-            at: nil
-        )
-
+        playerNode.scheduleFile(sourceFile, at: nil)
         try engine.start()
         playerNode.play()
 
-        let requiresExternalCodec =
-            format == .mp3
-            || format == .flac
-            || format == .ogg
-            || format == .aac
-
-        let renderedWAVURL: URL?
-        let outputURLForRender: URL
-
-        if requiresExternalCodec {
-            renderedWAVURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(
-                    "AudioPlayerExport-\(UUID().uuidString)"
-                )
-                .appendingPathExtension("wav")
-            outputURLForRender = renderedWAVURL!
-        } else {
-            renderedWAVURL = nil
-            outputURLForRender = destinationURL
-        }
-
-        let outputSettings = try outputSettings(
-            for: format == .mp3 || format == .flac || format == .ogg || format == .aac
-                ? .wav
-                : format,
-            sourceFormat: renderFormat
+        let targetFrames = AVAudioFramePosition(
+            ceil(Double(sourceFile.length) / speed)
         )
-
-        let outputFile = try AVAudioFile(
-            forWriting: outputURLForRender,
-            settings: outputSettings
-        )
-
         guard let buffer = AVAudioPCMBuffer(
             pcmFormat: renderFormat,
-            frameCapacity: maximumFrameCount
+            frameCapacity: 4096
         ) else {
             throw AudioExportError.renderFailed
         }
 
-        let clampedSpeed = min(max(speed, 0.1), 3.0)
-        let targetFrames = AVAudioFramePosition(
-            ceil(
-                Double(sourceFile.length) / clampedSpeed
-            )
-        )
-
         while engine.manualRenderingSampleTime < targetFrames {
-            let remainingFrames =
-                targetFrames - engine.manualRenderingSampleTime
-            let framesToRender = min(
-                AVAudioFrameCount(remainingFrames),
-                maximumFrameCount
-            )
-
-            let status = try engine.renderOffline(
-                framesToRender,
-                to: buffer
-            )
+            let remainingFrames = targetFrames - engine.manualRenderingSampleTime
+            let framesToRender = min(AVAudioFrameCount(remainingFrames), 4096)
+            let status = try engine.renderOffline(framesToRender, to: buffer)
 
             if buffer.frameLength > 0 {
                 try outputFile.write(from: buffer)
             }
 
             switch status {
-            case .success:
-                continue
-            case .insufficientDataFromInputNode:
-                continue
-            case .cannotDoInCurrentContext:
+            case .success, .insufficientDataFromInputNode, .cannotDoInCurrentContext:
                 continue
             case .error:
                 throw AudioExportError.renderFailed
@@ -176,17 +186,41 @@ struct AudioExporter {
 
         playerNode.stop()
         engine.stop()
+    }
 
-        if let renderedWAVURL {
-            defer {
-                try? FileManager.default.removeItem(at: renderedWAVURL)
+    private static func renderSession(
+        nextBuffer: () throws -> AVAudioPCMBuffer?,
+        outputFile: AVAudioFile,
+        volume: Double
+    ) throws {
+        while let buffer = try nextBuffer() {
+            if volume != 1.0 {
+                applyVolume(volume, to: buffer)
             }
+            try outputFile.write(from: buffer)
+        }
+    }
 
-            try encodeWithFFmpeg(
-                inputURL: renderedWAVURL,
-                destinationURL: destinationURL,
-                format: format
-            )
+    private static func applyVolume(
+        _ volume: Double,
+        to buffer: AVAudioPCMBuffer
+    ) {
+        let gain = Float(volume)
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+
+        if buffer.format.isInterleaved,
+           let data = buffer.mutableAudioBufferList.pointee.mBuffers.mData {
+            let samples = data.assumingMemoryBound(to: Float.self)
+            for index in 0..<(frameCount * channelCount) {
+                samples[index] *= gain
+            }
+        } else if let channels = buffer.floatChannelData {
+            for channel in 0..<channelCount {
+                for frame in 0..<frameCount {
+                    channels[channel][frame] *= gain
+                }
+            }
         }
     }
 

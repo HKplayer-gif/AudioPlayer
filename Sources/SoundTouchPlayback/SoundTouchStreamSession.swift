@@ -130,6 +130,11 @@ public final class SoundTouchStreamSession: @unchecked Sendable {
         let isEnd: Bool
     }
 
+    /// Synchronous pull interface for offline rendering. A dedicated session must be used.
+    public func nextBufferForExport() throws -> AVAudioPCMBuffer? {
+        try makeNextBuffer().buffer
+    }
+
     private func makeNextBuffer() throws -> BufferResult {
         while true {
             let available = Int(apst_soundtouch_num_samples(processor))

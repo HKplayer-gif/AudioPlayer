@@ -10,6 +10,7 @@ final class AppController {
     let settingsStore: SettingsStore
     private(set) var settings: SettingsState
     private(set) var hasUnsavedSettingsChanges = false
+    private(set) var settingsSaveErrorMessage: String?
 
     let selectedFolder: SelectedFolder
     let library: Library
@@ -19,6 +20,13 @@ final class AppController {
     let playlists: PlaylistStore
     let keybindManager: KeybindManager
     let nowPlayingController: NowPlayingController
+    let screenEffectController: ScreenEffectController
+    private let bpmKeyAnalysisService = BPMKeyAnalysisService()
+
+    private(set) var bpmKeyAnalysisResult: BPMKeyAnalysisResult?
+    private(set) var bpmKeyAnalysisStatus: BPMKeyAnalysisStatus = .idle
+    private var bpmKeyAnalysisTask: Task<Void, Never>?
+    private var bpmKeyAnalysisURL: URL?
 
     private(set) var playbackQueue: PlaybackQueue?
     private(set) var playbackQueueCurrentIndex: Int?
@@ -60,8 +68,28 @@ final class AppController {
             settings: loadedSettings
         )
         nowPlayingController = NowPlayingController()
+        screenEffectController = ScreenEffectController(settings: loadedSettings)
 
         browser = Browser()
+
+        screenEffectController.onToggleRequested = { [weak self] in
+            self?.toggleScreenEffectFromHotKey()
+        }
+        screenEffectController.setPlaybackPositionProvider { [weak self] in
+            guard let self else {
+                return (nil, false)
+            }
+
+            let isPlaying = self.player.playbackState == .playing
+            let position = isPlaying
+                ? self.player.currentPlaybackPosition(
+                    shouldAutoSave: false,
+                    detectPlaybackEnd: false
+                )
+                : nil
+            return (position, isPlaying)
+        }
+
         nowPlayingController.onPlay = { [weak self] in
             guard let self else {
                 return
@@ -87,7 +115,7 @@ final class AppController {
             guard let self else {
                 return
             }
-            self.previous()
+            self.handlePreviousTrackCommand()
         }
 
         nowPlayingController.onNextTrack = { [weak self] in
@@ -129,6 +157,7 @@ final class AppController {
                 currentTrackURL: self.player.currentTrackURL,
                 currentTrackDuration: self.player.currentTrackDuration
             )
+            self.updateBPMKeyAnalysisForCurrentTrack()
 
             switch playbackState {
             case .playing:
@@ -176,10 +205,7 @@ final class AppController {
 
             switch action {
             case .previousTrack:
-                self.previous()
-
-            case .f7PreviousTrack:
-                self.handleF7PreviousTrack()
+                self.handlePreviousTrackCommand()
 
             case .playPause:
                 self.player.togglePlayPause()
@@ -197,6 +223,10 @@ final class AppController {
                 let succeeded: Bool
 
                 switch self.settings.mouseSideButtonAction {
+                case .track:
+                    self.previous()
+                    return
+
                 case .pitch:
                     guard !self.isPitchCyclesPlaybackActive else {
                         return
@@ -229,6 +259,10 @@ final class AppController {
                 let succeeded: Bool
 
                 switch self.settings.mouseSideButtonAction {
+                case .track:
+                    self.next()
+                    return
+
                 case .pitch:
                     guard !self.isPitchCyclesPlaybackActive else {
                         return
@@ -320,6 +354,7 @@ final class AppController {
 
     func handleApplicationDidBecomeActive() {
         isApplicationActive = true
+        keybindManager.setApplicationActive(true)
 
         _ = player.currentPlaybackPosition(
             shouldAutoSave: true
@@ -327,6 +362,7 @@ final class AppController {
 
         playbackUIRefreshToken &+= 1
         refreshAccessibilityPermissionStatus()
+        updateBPMKeyAnalysisForCurrentTrack()
 
         if player.playbackState == .playing {
             startPlaybackMonitor()
@@ -339,6 +375,7 @@ final class AppController {
         )
 
         isApplicationActive = false
+        keybindManager.setApplicationActive(false)
         stopPlaybackMonitor()
     }
 
@@ -350,31 +387,152 @@ final class AppController {
     func saveSettings(_ settings: SettingsState) {
         _ = keybindManager.canApplySettings(settings)
 
+        var normalizedSettings = settings
+        if !normalizedSettings.bpmKeyEnabled {
+            normalizedSettings.screenEffectEnabled = false
+        }
+
+        let previousSettings = self.settings
+
         do {
-            try settingsStore.saveUserSettings(settings)
-            self.settings = settings
+            try settingsStore.saveUserSettings(normalizedSettings)
+            self.settings = normalizedSettings
             self.hasUnsavedSettingsChanges = false
-            self.keybindManager.updateSettings(settings)
+            self.settingsSaveErrorMessage = nil
+            self.keybindManager.updateSettings(normalizedSettings)
+            self.screenEffectController.updateSettings(normalizedSettings)
             // Apply the selected algorithm and Speed Fix flag before changing
             // Native/Processed mode, so the mode transition activates only the
             // final intended playback route.
             self.player.audioProcessingAlgorithm =
-                settings.audioProcessingAlgorithm
-            self.player.speedFixEnabled = settings.speedFixEnabled
+                normalizedSettings.audioProcessingAlgorithm
+            self.player.speedFixEnabled = normalizedSettings.speedFixEnabled
             self.player.playbackProcessingMode =
-                settings.playbackProcessingMode
-            self.player.progressSaveMode = settings.progressSaveMode
-            self.history.setMaximumCount(settings.historyCapacity)
+                normalizedSettings.playbackProcessingMode
+            self.player.progressSaveMode = normalizedSettings.progressSaveMode
+            self.history.setMaximumCount(normalizedSettings.historyCapacity)
 
-            if settings.progressSaveMode == .never {
+            if normalizedSettings.progressSaveMode == .never {
                 self.player.clearPersistedPlaybackProgress()
             }
+
+            if previousSettings.bpmKeyEnabled != normalizedSettings.bpmKeyEnabled {
+                updateBPMKeyAnalysisForCurrentTrack(force: true)
+            } else if normalizedSettings.bpmKeyEnabled {
+                updateBPMKeyAnalysisForCurrentTrack()
+            }
+        } catch {
+            self.settingsSaveErrorMessage = "Audio Player couldn't save your settings. Your changes have not been applied.\n\nDetails: \(error.localizedDescription)"
+        }
+    }
+
+    func dismissSettingsSaveError() {
+        settingsSaveErrorMessage = nil
+    }
+
+    private func updateBPMKeyAnalysisForCurrentTrack(force: Bool = false) {
+        guard settings.bpmKeyEnabled,
+              let trackURL = player.currentTrackURL else {
+            bpmKeyAnalysisTask?.cancel()
+            bpmKeyAnalysisTask = nil
+            bpmKeyAnalysisURL = nil
+            bpmKeyAnalysisResult = nil
+            bpmKeyAnalysisStatus = .idle
+            screenEffectController.updateAnalysis(
+                result: nil,
+                status: .idle
+            )
+            return
+        }
+
+        if !force,
+           bpmKeyAnalysisURL == trackURL {
+            switch bpmKeyAnalysisStatus {
+            case .analyzing, .ready, .failed:
+                return
+            case .idle:
+                break
+            }
+        }
+
+        bpmKeyAnalysisTask?.cancel()
+        bpmKeyAnalysisURL = trackURL
+        bpmKeyAnalysisResult = nil
+        bpmKeyAnalysisStatus = .analyzing
+        screenEffectController.updateAnalysis(
+            result: nil,
+            status: .analyzing
+        )
+
+        bpmKeyAnalysisTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            do {
+                let result = try await self.bpmKeyAnalysisService.analyze(
+                    fileURL: trackURL
+                )
+
+                guard !Task.isCancelled,
+                      self.settings.bpmKeyEnabled,
+                      self.player.currentTrackURL == trackURL else {
+                    return
+                }
+
+                self.bpmKeyAnalysisResult = result
+                self.bpmKeyAnalysisStatus = .ready
+                self.screenEffectController.updateAnalysis(
+                    result: result,
+                    status: .ready
+                )
+                self.bpmKeyAnalysisTask = nil
+            } catch {
+                guard !Task.isCancelled,
+                      self.settings.bpmKeyEnabled,
+                      self.player.currentTrackURL == trackURL else {
+                    return
+                }
+
+                self.bpmKeyAnalysisStatus = .failed(
+                    error.localizedDescription
+                )
+                self.screenEffectController.updateAnalysis(
+                    result: nil,
+                    status: self.bpmKeyAnalysisStatus
+                )
+                self.bpmKeyAnalysisTask = nil
+            }
+        }
+    }
+
+    func toggleScreenEffectFromHotKey() {
+        guard settings.bpmKeyEnabled else { return }
+
+        var updatedSettings = settings
+        updatedSettings.screenEffectEnabled.toggle()
+
+        do {
+            try settingsStore.saveUserSettings(updatedSettings)
+            settings = updatedSettings
+            keybindManager.updateSettings(updatedSettings)
+            screenEffectController.updateSettings(updatedSettings)
         } catch {
             
         }
     }
 
+    func shutdown() {
+        bpmKeyAnalysisTask?.cancel()
+        bpmKeyAnalysisTask = nil
+        screenEffectController.shutdown()
+    }
+
     func deleteAllUserData() {
+        bpmKeyAnalysisTask?.cancel()
+        bpmKeyAnalysisTask = nil
+        bpmKeyAnalysisURL = nil
+        bpmKeyAnalysisResult = nil
+        bpmKeyAnalysisStatus = .idle
+
         player.stop()
         playbackQueue = nil
         currentPlaylistItemID = nil
@@ -393,6 +551,11 @@ final class AppController {
         settings = settingsStore.loadDefaultSettings()
         hasUnsavedSettingsChanges = false
         keybindManager.updateSettings(settings)
+        screenEffectController.updateSettings(settings)
+        screenEffectController.updateAnalysis(
+            result: nil,
+            status: .idle
+        )
         player.playbackProcessingMode = settings.playbackProcessingMode
         player.audioProcessingAlgorithm = settings.audioProcessingAlgorithm
         player.speedFixEnabled = settings.speedFixEnabled
@@ -594,6 +757,7 @@ final class AppController {
         }
 
         isReady = true
+        updateBPMKeyAnalysisForCurrentTrack()
 
         processPendingExternalFileOpenIfReady()
 
@@ -914,12 +1078,34 @@ final class AppController {
         queue.next()
     }
 
+    // Media-key commands (including the hardware media F7 key) arrive through
+    // MPRemoteCommandCenter rather than Carbon. Keep them on the same decision
+    // path as the Carbon F7 shortcut so no Previous Track route bypasses it.
+    func handlePreviousTrackCommand() {
+        let advancedF7Active =
+            settings.quickKeysEnabled &&
+            settings.quickTrackNavigationEnabled &&
+            settings.f7RestartBehaviorEnabled
+
+        if advancedF7Active {
+            handleF7PreviousTrack()
+        } else {
+            previous()
+        }
+    }
+
     func handleF7PreviousTrack() {
+        let position = player.currentPlaybackPosition
         guard let queue = playbackQueue else {
             return
         }
 
-        if player.currentPlaybackPosition <= 10.0 {
+        guard position.isFinite else {
+            previous()
+            return
+        }
+
+        if position <= 10.0 {
             previous()
             return
         }

@@ -1,0 +1,20 @@
+diff --git a/wscript b/wscript
+index 41680e4..b6e439e 100644
+--- a/wscript
++++ b/wscript
+@@ -119,6 +119,15 @@ def configure(ctx):
+     # compiler flags
+     ctx.env.CXXFLAGS = ['-std=' + ctx.options.STD]  # c++11 by default
+
++    # Audio Player build compatibility: use libc++ headers from the active SDK
++    # and retain the package's macOS 14.0 deployment target.
++    if sys.platform == 'darwin':
++        if os.environ.get('SDKROOT'):
++            ctx.env.CXXFLAGS += ['-isystem', os.path.join(os.environ['SDKROOT'], 'usr/include/c++/v1')]
++        deployment_target = os.environ.get('MACOSX_DEPLOYMENT_TARGET', '14.0')
++        ctx.env.CXXFLAGS += ['-mmacosx-version-min=' + deployment_target]
++        ctx.env.CFLAGS += ['-mmacosx-version-min=' + deployment_target]
++
+     if sys.platform != 'win32':
+         # msvc does not support -pipe
+         ctx.env.CXXFLAGS += ['-pipe', '-Wall']

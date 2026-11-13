@@ -126,6 +126,7 @@ final class AudioPlayerAppDelegate: NSObject, NSApplicationDelegate, NSWindowDel
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        appController.shutdown()
         saveWindowFrame(mainWindow)
         UserDefaults.standard.synchronize()
     }

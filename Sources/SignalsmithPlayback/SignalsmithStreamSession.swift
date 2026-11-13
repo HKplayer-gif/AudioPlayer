@@ -154,6 +154,11 @@ public final class SignalsmithStreamSession: @unchecked Sendable {
         let isEnd: Bool
     }
 
+    /// Synchronous pull interface for offline rendering. A dedicated session must be used.
+    public func nextBufferForExport() throws -> AVAudioPCMBuffer? {
+        try makeNextBuffer().buffer
+    }
+
     private func makeNextBuffer() throws -> BufferResult {
         if nextSourceFrame < sourceFrameLimit {
             let remaining = sourceFrameLimit - nextSourceFrame

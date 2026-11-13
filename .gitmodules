@@ -1,0 +1,3 @@
+[submodule "Vendor/Essentia"]
+	path = Vendor/Essentia
+	url = https://github.com/MTG/essentia.git

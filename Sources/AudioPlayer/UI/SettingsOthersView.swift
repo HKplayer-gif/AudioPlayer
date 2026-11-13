@@ -3,7 +3,9 @@ import SwiftUI
 
 struct SettingsOthersView: View {
     @State private var showSupportedFormatsInfo = false
+    @State private var showBPMKeyInfo = false
     @State private var showThirdPartyCredits = false
+    @State private var showProjectLicenseNotice = false
 
     @Environment(AppController.self) private var appController
 
@@ -37,6 +39,9 @@ struct SettingsOthersView: View {
             appController.setSettingsHasUnsavedChanges(
                 newDraft != appController.settings
             )
+        }
+        .onChange(of: appController.settings.screenEffectEnabled) { _, enabled in
+            draft.screenEffectEnabled = enabled
         }
     }
 
@@ -73,6 +78,10 @@ struct SettingsOthersView: View {
                 spacing: 48
             ) {
                 keybindsSection
+
+                bpmKeySection
+
+                screenEffectSection
 
                 accessibilitySection
 
@@ -195,7 +204,7 @@ struct SettingsOthersView: View {
                 .frame(height: 16)
 
             HStack {
-                Text("Enable Adjustment Quick Key (Mouse 4 / Mouse 5)")
+                Text("Enable Adjustment Quick Key (Mouse 4 / Mouse 5)*")
                 Spacer()
                 Toggle(
                     "",
@@ -206,7 +215,7 @@ struct SettingsOthersView: View {
             }
 
             HStack {
-                Text("Enable Adjustment Quick Key (Shift + F7 / Shift + F9)")
+                Text("Enable Adjustment Quick Key (Shift + Previous / Shift + Next)*")
                 Spacer()
                 Toggle(
                     "",
@@ -234,11 +243,10 @@ struct SettingsOthersView: View {
                     "",
                     selection: $draft.mouseSideButtonAction
                 ) {
+                    Text("Track")
+                        .tag(MouseSideButtonAction.track)
                     Text("Pitch")
-                        .tag(
-                            MouseSideButtonAction.pitch
-                        )
-
+                        .tag(MouseSideButtonAction.pitch)
                     Text("Speed")
                         .tag(
                             MouseSideButtonAction.speed
@@ -263,6 +271,209 @@ struct SettingsOthersView: View {
 
 
 
+    private var bpmKeySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("BPM & Key")
+                .font(.headline)
+
+            HStack {
+                Text("Enable BPM & Key")
+                Spacer()
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { draft.bpmKeyEnabled },
+                        set: { enabled in
+                            draft.bpmKeyEnabled = enabled
+                            if !enabled {
+                                draft.screenEffectEnabled = false
+                            }
+                        }
+                    )
+                )
+                .labelsHidden()
+                .frame(width: 160)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Analyze the current track for musical key and beat information.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button { showBPMKeyInfo = true } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showBPMKeyInfo) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("BPM & Key Analysis").font(.headline)
+                        Text("Uses Essentia (RhythmExtractor2013 and KeyExtractor) to analyze the current track's tempo, beat positions, and musical key.")
+                        Text("Analysis may require additional memory. Enable this feature according to your needs.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(16)
+                    .frame(width: 360, alignment: .leading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var screenEffectSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Screen Effect")
+                .font(.headline)
+
+            HStack {
+                Text("Show effect toggle state in Current Playing tab")
+                Spacer()
+                Toggle(
+                    "",
+                    isOn: $draft.showEffectToggleStateInCurrentPlayingTab
+                )
+                .labelsHidden()
+                .frame(width: 160)
+            }
+
+            Divider()
+
+            HStack {
+                Text("Beat Rate Multiplier")
+                Spacer()
+                Picker(
+                    "",
+                    selection: $draft.screenEffectBeatRateMultiplier
+                ) {
+                    ForEach(SettingsState.screenEffectBeatRateOptions, id: \.self) { multiplier in
+                        Text(String(format: "%.3f×", multiplier))
+                            .tag(multiplier)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 180)
+            }
+
+            numericSettingRow(
+                title: "Red Channel Multiplier",
+                value: $draft.screenEffectRedMultiplier,
+                range: 0.0...1.0,
+                precision: 2,
+                suffix: "×",
+                step: 0.01
+            )
+
+            numericSettingRow(
+                title: "Green Channel Multiplier",
+                value: $draft.screenEffectGreenMultiplier,
+                range: 0.0...1.0,
+                precision: 2,
+                suffix: "×",
+                step: 0.01
+            )
+
+            numericSettingRow(
+                title: "Blue Channel Multiplier",
+                value: $draft.screenEffectBlueMultiplier,
+                range: 0.0...1.0,
+                precision: 2,
+                suffix: "×",
+                step: 0.01
+            )
+
+            numericSettingRow(
+                title: "Pulse Strength",
+                value: $draft.screenEffectStrength,
+                range: 0.5...2.5,
+                precision: 2,
+                suffix: "×"
+            )
+
+            durationSettingRow(
+                title: "Hold Duration",
+                value: $draft.screenEffectHoldDuration,
+                range: 0...10
+            )
+
+            durationSettingRow(
+                title: "Fade In Duration",
+                value: $draft.screenEffectFadeInDuration,
+                range: 0...5
+            )
+
+            durationSettingRow(
+                title: "Fade Out Duration",
+                value: $draft.screenEffectFadeOutDuration,
+                range: 0...5
+            )
+
+            HStack(alignment: .center) {
+                Text("Trigger Key")
+                Spacer()
+                ScreenEffectHotKeyCaptureField(
+                    keyLabel: (draft.screenEffectTriggerShift ? "⇧ + " : "")
+                        + draft.screenEffectTriggerKeyLabel,
+                    onCapture: { code, label, shift in
+                        draft.screenEffectTriggerKeyCode = code
+                        draft.screenEffectTriggerKeyLabel = label
+                        draft.screenEffectTriggerShift = shift
+                    },
+                    onCancel: {}
+                )
+                .frame(width: 220, height: 32)
+            }
+
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func durationSettingRow(
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>
+    ) -> some View {
+        numericSettingRow(
+            title: title,
+            value: value,
+            range: range,
+            precision: 1,
+            suffix: " s",
+            step: 0.1
+        )
+    }
+
+    private func numericSettingRow(
+        title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        precision: Int,
+        suffix: String,
+        step: Double = 0.01
+    ) -> some View {
+        let steppedValue = Binding<Double>(
+            get: { value.wrappedValue },
+            set: { newValue in
+                let snapped = (newValue / step).rounded() * step
+                value.wrappedValue = min(
+                    max(snapped, range.lowerBound),
+                    range.upperBound
+                )
+            }
+        )
+
+        return HStack {
+            Text(title)
+            Spacer()
+            NumericSettingTextField(
+                value: value,
+                range: range,
+                precision: precision,
+                suffix: suffix
+            )
+            Slider(value: steppedValue, in: range)
+                .frame(width: 180)
+        }
+    }
+
     private var accessibilitySection: some View {
         VStack(
             alignment: .leading,
@@ -274,19 +485,29 @@ struct SettingsOthersView: View {
             HStack {
                 Text("Accessibility")
                 Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(appController.keybindManager.accessibilityListenerStatus)
+                        .foregroundStyle(
+                            appController.keybindManager.isEventTapActive
+                                ? .green
+                                : .secondary
+                        )
+                    if let description = appController.keybindManager.accessibilityRequirementDescription {
+                        Text(description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .id(appController.accessibilityPermissionRefreshToken)
+
+                Button("Refresh") {
+                    appController.refreshAccessibilityPermissionStatus()
+                }
+
                 Button("Open Settings") {
                     appController.keybindManager.openAccessibilitySettings()
                 }
             }
-
-            Text(
-                appController.keybindManager.isAccessibilityPermissionGranted
-                    ? "Used for custom keybindings."
-                    : "Required for custom keybindings."
-            )
-            .id(appController.accessibilityPermissionRefreshToken)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
         }
         .frame(
             maxWidth: .infinity,
@@ -387,15 +608,62 @@ struct SettingsOthersView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var projectLicenseNotice: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Audio Player — Open Source License")
+                .font(.headline)
+
+            Text("Copyright © 2026 HKplayer-gif. Modified on November 12, 2026.")
+
+            Text("Audio Player v4.51.4 and later are distributed under the GNU Affero General Public License, version 3 (AGPL-3.0-only).")
+
+            Text("You may redistribute and modify this program under the terms of the AGPL-3.0. The program is provided without warranty, to the extent permitted by law.")
+
+            Text("The corresponding source code and build materials are available from the Audio Player GitHub repository.")
+
+            Button("Open Full AGPL-3.0 License") {
+                openProjectLicense()
+            }
+            .buttonStyle(.link)
+        }
+        .frame(width: 390, alignment: .leading)
+    }
+
+    private func openProjectLicense() {
+        guard let licenseURL = Bundle.module.url(
+            forResource: "AudioPlayer-AGPL-3.0",
+            withExtension: "txt",
+            subdirectory: "ThirdPartyLicenses"
+        ) else {
+            return
+        }
+
+        NSWorkspace.shared.open(licenseURL)
+    }
+
     private var thirdPartyCreditsInfo: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Third-Party Audio Algorithms")
+            Text("Third-Party Audio Components")
                 .font(.headline)
 
             Text("SoundTouch")
                 .font(.subheadline.weight(.semibold))
             Text("SoundTouch by Olli Parviainen. Licensed under the GNU Lesser General Public License, version 2.1 (LGPL-2.1).")
             Link("SoundTouch project", destination: URL(string: "https://www.surina.net/soundtouch/")!)
+
+            Divider()
+
+            Text("Essentia")
+                .font(.subheadline.weight(.semibold))
+            Text("Essentia 2.1_beta5. Audio analysis for musical key, BPM, and beat timestamps. Licensed under GNU AGPL-3.0.")
+            Link("Essentia source", destination: URL(string: "https://github.com/MTG/essentia")!)
+
+            Divider()
+
+            Text("FFmpeg")
+                .font(.subheadline.weight(.semibold))
+            Text("FFmpeg 9.0.2. Audio codec backend. This bundled build enables GPL components and is licensed under GNU GPL-3.0-or-later.")
+            Link("FFmpeg source", destination: URL(string: "https://ffmpeg.org/")!)
 
             Divider()
 
@@ -461,7 +729,7 @@ struct SettingsOthersView: View {
             HStack {
                 Text("Version")
                 Spacer()
-                Text("v4.50.4")
+                Text("v26.11.1")
                     .foregroundStyle(.secondary)
             }
 
@@ -482,7 +750,7 @@ struct SettingsOthersView: View {
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Text("Third-Party Audio Algorithms")
+                Text("Third-Party Audio Components")
                 Spacer()
                 Button {
                     showThirdPartyCredits = true
@@ -492,6 +760,21 @@ struct SettingsOthersView: View {
                 .buttonStyle(.plain)
                 .popover(isPresented: $showThirdPartyCredits) {
                     thirdPartyCreditsInfo
+                        .padding(16)
+                }
+            }
+
+            HStack(alignment: .firstTextBaseline) {
+                Text("Open Source License")
+                Spacer()
+                Button {
+                    showProjectLicenseNotice = true
+                } label: {
+                    Label("AGPL-3.0", systemImage: "info.circle")
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showProjectLicenseNotice) {
+                    projectLicenseNotice
                         .padding(16)
                 }
             }
@@ -539,5 +822,62 @@ struct SettingsOthersView: View {
 
     private func saveChanges() {
         appController.saveSettings(draft)
+    }
+}
+
+
+private struct NumericSettingTextField: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let precision: Int
+    let suffix: String
+
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .monospacedDigit()
+                .frame(width: 68)
+                .focused($isFocused)
+                .onAppear(perform: synchronizeText)
+                .onSubmit(commit)
+                .onChange(of: text) { _, newText in
+                    applyValidText(newText)
+                }
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commit() }
+                }
+                .onChange(of: value) { _, _ in
+                    if !isFocused { synchronizeText() }
+                }
+
+            Text(suffix)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+    }
+
+    private func synchronizeText() {
+        text = String(format: "%.*f", precision, value)
+    }
+
+    private func applyValidText(_ rawText: String) {
+        let candidate = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let decimalPattern = #"^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$"#
+        guard candidate.range(of: decimalPattern, options: .regularExpression) != nil,
+              let parsed = Double(candidate),
+              parsed.isFinite,
+              range.contains(parsed) else { return }
+        let scale = pow(10.0, Double(precision))
+        value = (parsed * scale).rounded() / scale
+    }
+
+    private func commit() {
+        applyValidText(text)
+        synchronizeText()
     }
 }
