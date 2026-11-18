@@ -651,35 +651,43 @@ struct NowPlayingView: View {
                 }
 
                 if appController.settings.showEffectToggleStateInCurrentPlayingTab {
-                    VStack(alignment: .leading, spacing: 5) {
-                        HStack {
-                            Text("Screen Effect")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                    Button {
+                        appController.toggleScreenEffectFromHotKey()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text("Screen Effect")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
 
-                            Spacer()
+                                Spacer()
 
-                            Text(appController.screenEffectController.status.title)
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(
-                                    appController.screenEffectController.status == .enabled
-                                        ? .green
-                                        : .secondary
-                                )
+                                Text(appController.screenEffectController.status.title)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(
+                                        appController.screenEffectController.status == .enabled
+                                            ? .green
+                                            : .secondary
+                                    )
+                            }
+
+                            if !appController.settings.bpmKeyEnabled {
+                                Text("Enable BPM & Key to use Screen Effect.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-
-                        if !appController.settings.bpmKeyEnabled {
-                            Text("Enable BPM & Key to use Screen Effect.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(RoundedRectangle(cornerRadius: 8))
+                        .background(
+                            Color.primary.opacity(0.045),
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        Color.primary.opacity(0.045),
-                        in: RoundedRectangle(cornerRadius: 8)
-                    )
+                    .buttonStyle(.plain)
+                    .disabled(!appController.settings.bpmKeyEnabled)
+                    .help("Toggle Screen Effect")
                 }
             }
         }

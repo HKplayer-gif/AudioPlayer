@@ -27,7 +27,7 @@ The repository does not store FFmpeg executable/library binaries. Prepare a self
 FFMPEG_RUNTIME_DIR="/absolute/path/to/ffmpeg-runtime" Scripts/package-release.sh
 ```
 
-The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource and self-contained LGPL FFmpeg runtime, checks that no personal user data is packaged, signs ad hoc, creates the Applications shortcut, mounts the finished DMG read-only for a content check, and writes `Audio Player v26.11.1.dmg` to `~/Downloads` by default (the version is set in `Scripts/package-release.sh`). Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
+The script builds the release executable, creates `Audio Player.app`, sets the UI/bundle version metadata, checks linked libraries for non-portable absolute paths, verifies the bundled default-settings resource and self-contained LGPL FFmpeg runtime, checks that no personal user data is packaged, signs ad hoc, creates the Applications shortcut, mounts the finished DMG read-only for a content check, and writes `Audio Player v26.11.2.dmg` to `~/Downloads` by default (the version is set in `Scripts/package-release.sh`). Override `OUTPUT_DIR` to choose another output folder. The app resolves its SwiftPM resource bundle from the packaged app resources and does not require the build-machine `.build` directory at runtime.
 
 The GitHub release includes a complete project source archive (including the pinned Essentia submodule) and a separate FFmpeg/LAME/mpg123 corresponding-source and build-provenance archive.
 
@@ -43,7 +43,7 @@ See `THIRD_PARTY_NOTICES.md` and the license texts under `Sources/AudioPlayer/Re
 
 ## License and attribution
 
-The current public release, **Audio Player v26.11.1**, is licensed as a whole under the GNU Affero General Public License, version 3 (AGPL-3.0-only); see LICENSE. The licensing transition was prepared during the v4.51.4 development test on 2026-11-12 to support the integration of Essentia.
+The current public release, **Audio Player v26.11.2**, is licensed as a whole under the GNU Affero General Public License, version 3 (AGPL-3.0-only); see LICENSE. The licensing transition was prepared during the v4.51.4 development test on 2026-11-12 to support the integration of Essentia.
 
 **Earlier published releases, including v4.50.4, remain available under the MIT license** as originally published. A copy of that prior license is retained in LICENSE-MIT-PRIOR-RELEASES.txt. This change does not retroactively withdraw permissions already granted for those earlier releases.
 

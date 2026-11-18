@@ -112,7 +112,7 @@ struct SettingsState: Codable, Equatable {
         playlistEscapeNavigationEnabled: false,
         bpmKeyEnabled: false,
         screenEffectEnabled: false,
-        showEffectToggleStateInCurrentPlayingTab: false,
+        showEffectToggleStateInCurrentPlayingTab: true,
         screenEffectStrength: 1.1,
         screenEffectHoldDuration: 0.1,
         screenEffectFadeInDuration: 0.1,
@@ -199,7 +199,7 @@ struct SettingsState: Codable, Equatable {
         playlistEscapeNavigationEnabled: Bool,
         bpmKeyEnabled: Bool = false,
         screenEffectEnabled: Bool = false,
-        showEffectToggleStateInCurrentPlayingTab: Bool = false,
+        showEffectToggleStateInCurrentPlayingTab: Bool = true,
         screenEffectStrength: Double = 1.1,
         screenEffectHoldDuration: Double = 0.1,
         screenEffectFadeInDuration: Double = 0.1,
@@ -397,7 +397,7 @@ struct SettingsState: Codable, Equatable {
         showEffectToggleStateInCurrentPlayingTab = try container.decodeIfPresent(
             Bool.self,
             forKey: .showEffectToggleStateInCurrentPlayingTab
-        ) ?? false
+        ) ?? true
 
         screenEffectStrength = min(max(try container.decodeIfPresent(
             Double.self,

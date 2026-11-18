@@ -24,7 +24,7 @@
   "playlistEscapeNavigationEnabled": false,
   "bpmKeyEnabled": false,
   "screenEffectEnabled": false,
-  "showEffectToggleStateInCurrentPlayingTab": false,
+  "showEffectToggleStateInCurrentPlayingTab": true,
   "screenEffectStrength": 1.1,
   "screenEffectHoldDuration": 0.1,
   "screenEffectFadeInDuration": 0.1,

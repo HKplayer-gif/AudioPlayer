@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-VERSION="26.11.1"
-BUILD_NUMBER="26.11.1"
+VERSION="26.11.2"
+BUILD_NUMBER="26.11.2"
 APP_NAME="Audio Player"
 BUNDLE_ID="com.audioplayer"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -106,15 +106,39 @@ EOF
 ln -s /Applications "$STAGING_DIR/Applications"
 plutil -lint "$CONTENTS/Info.plist"
 
-# Reject accidental links to Homebrew or other non-system absolute paths.
+# Audit every executable and bundled dylib: reject build-machine dependencies and
+# ensure each @loader_path dependency is physically present in the delivered bundle.
 while IFS= read -r binary; do
-    otool -L "$binary" | tail -n +2 | awk '{print $1}' | while IFS= read -r dependency; do
+    dependencies="$(otool -L "$binary" | tail -n +2 | awk '{print $1}')"
+    install_id=""
+    if [[ "$binary" == *.dylib ]]; then
+        install_id="$(otool -D "$binary" | sed -n '2p' | awk '{print $1}')"
+    fi
+    while IFS= read -r dependency; do
+        [[ -n "$dependency" ]] || continue
+        [[ "$dependency" == "$install_id" ]] && continue
         case "$dependency" in
-            /System/Library/*|/usr/lib/*|@loader_path/*|@rpath/*|@executable_path/*) ;;
-            *) echo "ERROR: Non-portable dependency in $binary: $dependency" >&2; exit 1;;
+            /System/Library/*|/usr/lib/*) ;;
+            @loader_path/*)
+                resolved_dependency="$(dirname "$binary")/${dependency#@loader_path/}"
+                [[ -f "$resolved_dependency" ]] || {
+                    echo "ERROR: Missing bundled dependency for $binary: $dependency" >&2
+                    exit 1
+                }
+                ;;
+            *)
+                echo "ERROR: Non-portable or unresolved dependency in $binary: $dependency" >&2
+                exit 1
+                ;;
         esac
-    done
+    done <<< "$dependencies"
 done < <(find "$CONTENTS/MacOS" "$RESOURCES" -maxdepth 1 -type f \( -name 'AudioPlayer' -o -name 'ffmpeg' -o -name '*.dylib' \) -print)
+
+# Python is a build-time tool for Essentia's Waf script, not an app runtime dependency.
+if find "$APP_DIR" -type f \( -name 'python' -o -name 'python3' -o -name 'libpython*.dylib' \) -print -quit | grep -q .; then
+    echo "ERROR: A Python runtime was unexpectedly included in the application bundle." >&2
+    exit 1
+fi
 
 # Ad-hoc signing permits local verification but is not Developer ID notarization.
 codesign --force --deep --sign - "$APP_DIR"

@@ -1095,13 +1095,20 @@ final class AppController {
     }
 
     func handleF7PreviousTrack() {
-        let position = player.currentPlaybackPosition
-        guard let queue = playbackQueue else {
+        // Query AVAudioPlayerNode directly. The UI progress task and background
+        // monitor are intentionally suspended while the app is inactive, so
+        // the cached property may be stale when a media-key F7 arrives.
+        guard let position = player.currentPlaybackPosition(
+            shouldAutoSave: false,
+            detectPlaybackEnd: false
+        ), position.isFinite else {
+            // If the audio node cannot provide a live render position, do not
+            // substitute the UI's cached position for the 10-second decision.
+            previous()
             return
         }
 
-        guard position.isFinite else {
-            previous()
+        guard let queue = playbackQueue else {
             return
         }
 

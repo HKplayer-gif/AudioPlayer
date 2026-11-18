@@ -10,13 +10,13 @@ Audio Player incorporates or distributes the following third-party components:
 - **LAME 4.0** — LGPL; dynamically linked by FFmpeg as `libmp3lame.0.dylib`.
 - **mpg123 1.33.7** — LGPL; a dynamic dependency of the prepared LAME library (`libmpg123.0.dylib`).
 
-The FFmpeg runtime includes only the FFmpeg libraries, LAME, mpg123, and macOS system frameworks. OpenSSL and the former GPL video codec libraries are not included in this release runtime. Exact FFmpeg/LAME/mpg123 source archives, runtime hashes, configure options, and build provenance are included in the `Audio Player v26.11.1 FFmpeg Source Materials.tar.gz` release asset.
+The FFmpeg runtime includes only the FFmpeg libraries, LAME, mpg123, and macOS system frameworks. OpenSSL and the former GPL video codec libraries are not included in this release runtime. Exact FFmpeg/LAME/mpg123 source archives, runtime hashes, configure options, and build provenance are included in the `Audio Player v26.11.2 FFmpeg Source Materials.tar.gz` release asset.
 
 The application bundle includes the applicable license texts and build identification information. The distributed app does not require Homebrew, Python, FFmpeg, or any other separately installed runtime package.
 
 ## Project license transition
 
-The AGPL-3.0 licensing transition was prepared during the v4.51.4 development test on 2026-11-12. The current public release, v26.11.1, is distributed under GNU AGPL-3.0-only. Earlier published releases through v4.50.4 remain under MIT; see `LICENSE-MIT-PRIOR-RELEASES.txt` for the prior license text.
+The AGPL-3.0 licensing transition was prepared during the v4.51.4 development test on 2026-11-12. The current public release, v26.11.2, is distributed under GNU AGPL-3.0-only. Earlier published releases through v4.50.4 remain under MIT; see `LICENSE-MIT-PRIOR-RELEASES.txt` for the prior license text.
 
 The project license does not replace or remove the individual licenses of bundled third-party components. Each dependency's exact version, build configuration, source availability, and license must be recorded for every binary release.
 
